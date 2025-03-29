@@ -1,11 +1,6 @@
 use proconio::input;
-use std::io::{self, Write};
 
 fn main() {
-    // Buffer setup for efficient output
-    let stdout = io::stdout();
-    let mut handle = io::BufWriter::new(stdout.lock());
-
     // Step 1: Input
     input! {
         q: usize,
@@ -29,7 +24,7 @@ fn main() {
                 cr += 1;
             }
             3 => {
-                writeln!(handle, "{}", a[cl + (x - 1) as usize]).unwrap();
+                println!("{}", a[cl + (x - 1) as usize]);
             }
             _ => (),
         }
