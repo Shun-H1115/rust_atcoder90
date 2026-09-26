@@ -1,80 +1,23 @@
-use proconio::{input, marker::Chars};
+// ==========================================================================
+// 典型90 #073 We Need Both a and b（★5） 
+// 【修正点】元ファイルは2つの別バージョンが途中で混ざっており、fn main / use / const が
+//   二重定義されてコンパイルできなかった。正しく動く方（入力 [char; n]、非再帰DFS）の
+//   1本に整理し、意味が不明確だったコメントを書き直した。
+//
+// 【DPの定義】dp[v][t] = v の部分木内の辺の切り方のうち、
+//     v を含む連結成分（まだ親側とつながりうる）の状態が t であるもの。
+//     それ以外の「切り離された」成分はすべて a と b の両方を含んでいること。
+//     t = 0: a のみ / t = 1: b のみ / t = 2: a と b の両方
+// ==========================================================================
 
-const MOD: i64 = 1_000_000_007;
-
-fn main() {
-    input! {
-        n: usize,
-        cs: Chars,            // 長さ N の 'a'/'b' 列を 1 トークンで読み取る想定
-    }
-
-    let mut c = vec![' '; n + 1];
-    for i in 1..=n {
-        c[i] = cs[i - 1];
-    }
-
-    let mut g = vec![Vec::<usize>::new(); n + 1];
-    for _ in 0..(n - 1) {
-        input! { a: usize, b: usize }
-        g[a].push(b);
-        g[b].push(a);
-    }
-
-    // dp[v] = [dp0, dp1, dp2]
-    // C[v]=='a' のとき dp0, 'b' のとき dp1 を val1 にして dp2 = val2 - val1
-    let mut dp = vec![[0_i64; 3]; n + 1];
-
-    // 反復DFS（後行順）: (v, parent, visited_flag)
-    let mut stack: Vec<(usize, usize, bool)> = vec![(1, 0, false)];
-    while let Some((v, p, visited)) = stack.pop() {
-        if !visited {
-            // 先に自分を「後処理」で戻す
-            stack.push((v, p, true));
-            // 子を積む
-            for &to in &g[v] {
-                if to == p {
-                    continue;
-                }
-                stack.push((to, v, false));
-            }
-        } else {
-            // 後処理：子の dp が確定している
-            let mut val1: i64 = 1;
-            let mut val2: i64 = 1;
-
-            for &to in &g[v] {
-                if to == p {
-                    continue;
-                }
-                match c[v] {
-                    'a' => {
-                        // val1 *= (dp[to][0] + dp[to][2]);
-                        let t1 = (dp[to][0] + dp[to][2]) % MOD;
-                        val1 = (val1 * t1) % MOD;
-                        // val2 *= (dp[to][0] + dp[to][1] + 2*dp[to][2]);
-                        let t2 = (dp[to][0] + dp[to][1] + (2 * dp[to][2]) % MOD) % MOD;
-                        val2 = (val2 * t2) % MOD;
-                    }
-                    'b' => {
-                        // val1 *= (dp[to][1] + dp[to][2]);
-                        let t1 = (dp[to][1] + dp[to][2]) % MOD;
-                        val1 = (val1 * t1) % MOD;
-                        // val2 *= (dp[to][0] + dp[to][1] + 2*dp[to][2]);
-                        let t2 = (dp[to][0] + dp[to][1] + (2 * dp[to][2]) % MOD) % MOD;
-                        val2 = (val2 * t2) % MOD;
-                    }
-                    _ => unreachable!("c[v] must be 'a' or 'b'"),
-                }
-            }
 use proconio::input;
 
 const MOD: i64 = 1_000_000_007;
 
 fn main() {
-    // ---- Input ----
     input! {
         n: usize,
-        c_in: [char; n],
+        c_in: [char; n],              // 空白区切りの n 文字
         edges: [(usize, usize); n - 1],
     }
 
@@ -90,14 +33,12 @@ fn main() {
         g[b].push(a);
     }
 
-    // ---- Iterative DFS to get parent + order (avoid recursion limit) ----
+    // 非再帰DFSで親と訪問順を求める（深い木でもスタックオーバーフローしない）
     let root = 1usize;
     let mut parent = vec![usize::MAX; n + 1];
     parent[root] = root;
-
     let mut order = Vec::with_capacity(n);
     let mut stack = vec![root];
-
     while let Some(v) = stack.pop() {
         order.push(v);
         for &to in &g[v] {
@@ -109,15 +50,12 @@ fn main() {
         }
     }
 
-    // ---- DP ----
-    // dp[v][0]: number of ways in subtree(v) such that the component containing v has only 'a'
-    // dp[v][1]: number of ways in subtree(v) such that the component containing v has only 'b'
-    // dp[v][2]: number of ways in subtree(v) such that the component containing v has both 'a' and 'b'
-    //
-    // We count edge deletions only inside the subtree (edges to children), and do NOT decide about the edge to parent here.
     let mut dp = vec![[0i64; 3]; n + 1];
 
+    // 訪問順の逆 = 子が必ず親より先に処理される
     for &v in order.iter().rev() {
+        // val1: v の成分が v と同じ文字だけのままである切り方の数
+        // val2: v の成分が何でもよい（同じ文字のみ or 両方）切り方の数
         let mut val1: i64 = 1;
         let mut val2: i64 = 1;
 
@@ -125,70 +63,26 @@ fn main() {
             if to == parent[v] {
                 continue;
             }
+            let (d0, d1, d2) = (dp[to][0], dp[to][1], dp[to][2]);
 
-            let d0 = dp[to][0];
-            let d1 = dp[to][1];
-            let d2 = dp[to][2];
+            // 子と同じ文字だけの成分に保つ: 辺をつなぐなら子は同じ文字のみ、
+            // 辺を切るなら子の成分は両方を含んでいる必要がある（d2）
+            let same = if c[v] == 'a' { d0 } else { d1 };
+            let t1 = (same + d2) % MOD;
 
-            // For each child edge (v-to), we either keep it (merge components) or cut it.
-            // The formulas below compactly represent the same transitions as the original C++.
-            match c[v] {
-                'a' => {
-                    // To keep v's component as "only a":
-                    // child side must not introduce 'b' into v's component => allowed: (only a) or (both) but merged in a way?
-                    // This matches the original formula: (dp[to][0] + dp[to][2])
-                    let t1 = (d0 + d2) % MOD;
+            // 何でもよい: 辺をつなぐ（d0 + d1 + d2）＋ 辺を切る（d2 のみ可）
+            let t2 = (d0 + d1 + 2 * d2) % MOD;
 
-                    // For "not forcing v's component to be only a" (i.e., total ways considering cut/keep),
-                    // original uses: (dp[to][0] + dp[to][1] + 2*dp[to][2])
-                    let t2 = (d0 + d1 + 2 * d2) % MOD;
-
-                    val1 = (val1 * t1) % MOD;
-                    val2 = (val2 * t2) % MOD;
-                }
-                'b' => {
-                    let t1 = (d1 + d2) % MOD;
-                    let t2 = (d0 + d1 + 2 * d2) % MOD;
-
-                    val1 = (val1 * t1) % MOD;
-                    val2 = (val2 * t2) % MOD;
-                }
-                _ => unreachable!("c[i] must be 'a' or 'b'"),
-            }
+            val1 = val1 * t1 % MOD;
+            val2 = val2 * t2 % MOD;
         }
 
-        match c[v] {
-            'a' => {
-                dp[v][0] = val1;
-                dp[v][2] = (val2 - val1 + MOD) % MOD;
-            }
-            'b' => {
-                dp[v][1] = val1;
-                dp[v][2] = (val2 - val1 + MOD) % MOD;
-            }
-            _ => unreachable!(),
-        }
+        let idx = if c[v] == 'a' { 0 } else { 1 };
+        dp[v][idx] = val1;
+        // 両方を含む = 全体 - 同じ文字のみ
+        dp[v][2] = (val2 - val1).rem_euclid(MOD);
     }
 
-    // We need all connected components to contain both letters.
-    // That means the (only) component containing the root after all deletions must be "both",
-    // and since every component is somewhere in the tree, dp[root][2] exactly counts valid deletions.
-    println!("{}", dp[root][2] % MOD);
-}
-
-            match c[v] {
-                'a' => {
-                    dp[v][0] = val1 % MOD;
-                    dp[v][2] = (val2 - val1).rem_euclid(MOD);
-                }
-                'b' => {
-                    dp[v][1] = val1 % MOD;
-                    dp[v][2] = (val2 - val1).rem_euclid(MOD);
-                }
-                _ => unreachable!(),
-            }
-        }
-    }
-
-    println!("{}", dp[1][2] % MOD);
+    // 根の成分も a と b の両方を含む必要がある
+    println!("{}", dp[root][2]);
 }
